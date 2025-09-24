@@ -2,8 +2,8 @@ def update_position(
     liquidity: int,
     fee_growth_inside_0_x128: int,
     fee_growth_inside_1_x128: int,
-    fee_growth_inside_0_last_x128: int = 0,
-    fee_growth_inside_1_last_x128: int = 0
+    fee_growth_inside_0_last_x128: int,
+    fee_growth_inside_1_last_x128: int
 ) -> tuple[int, int]:
     """
     更新流动性头寸

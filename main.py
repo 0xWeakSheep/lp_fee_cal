@@ -42,12 +42,16 @@ def main():
     
     # 头寸相关参数
     liquidity = 500000
+    fee_growth_inside_0_last_x128 = 800000  # 上次记录的值
+    fee_growth_inside_1_last_x128 = 1600000  # 上次记录的值
     
     # 调用第二个函数，使用第一个函数的返回值作为输入
     tokens_owed_0_new, tokens_owed_1_new = update_position(
         liquidity=liquidity,
         fee_growth_inside_0_x128=fee_growth_inside_0_x128,  # 来自第一个函数的返回值
         fee_growth_inside_1_x128=fee_growth_inside_1_x128,  # 来自第一个函数的返回值
+        fee_growth_inside_0_last_x128=fee_growth_inside_0_last_x128,
+        fee_growth_inside_1_last_x128=fee_growth_inside_1_last_x128
     )
     
     print(f"新产生的token0手续费: {tokens_owed_0_new}")
