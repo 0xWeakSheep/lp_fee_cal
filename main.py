@@ -10,10 +10,10 @@ def main():
     
     # 预定义的参数（不使用手动输入）
     pool_id = "0x4e68ccd3e89f51c3074ca5072bbac773960dfa36"  # USDC/ETH 0.05% pool
-    mint_number = "23438171"   # mint时的区块号（更早的区块）
-    block_number = "2343073"  # 当前区块号
-    tick_lower = -191340  # 下边界tick
-    tick_upper = -201300   # 上边界tick
+    mint_number = "23408173"   # mint时的区块号（更早的区块）
+    block_number = "23438173"  # 当前区块号
+    tick_lower = -201300 # 下边界tick
+    tick_upper = -191340  # 上边界tick
     
     print("=== 从链上获取数据 ===")
     print(f"Pool ID: {pool_id}")
