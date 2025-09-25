@@ -14,7 +14,8 @@ def get_tick_by_price(price, decimal0=18, decimal1=18):
     return tick
 
 #use example
-print(get_tick_by_price(4551, 18, 6))  # Output: -192088.79227850618
+print(get_tick_by_price(3551, 18, 6))  # Output: -192088.79227850618
+print(get_tick_by_price(4951, 18, 6))  # Output: -192088.79227850618
 print(get_tick_by_price(0.5, 6, 18))  # Output: 269392.20806621236
 print(get_tick_by_price(1, 18, 18))  # Output: 0
 

@@ -1,6 +1,41 @@
 from fee_growth_calculator import get_fee_growth_inside
-from position_updater import update_position
+from position_updater import update_position, update_position_precise
 from GetFeeGrowth import fetch_pool_data
+
+
+def convert_to_token_amount(raw_amount: float, decimals: int) -> float:
+    """
+    将原始数量转换为实际的代币数量
+    
+    参数:
+    - raw_amount: 原始数量（最小单位）
+    - decimals: 代币精度
+    
+    返回:
+    - float: 实际代币数量
+    """
+    return raw_amount / (10 ** decimals)
+
+
+def format_fee_display(raw_int: int, raw_precise: float, decimals: int, symbol: str) -> str:
+    """
+    格式化手续费显示
+    
+    参数:
+    - raw_int: 原始整数手续费
+    - raw_precise: 原始精确手续费
+    - decimals: 代币精度
+    - symbol: 代币符号
+    
+    返回:
+    - str: 格式化的显示字符串
+    """
+    actual_int = convert_to_token_amount(raw_int, decimals)
+    actual_precise = convert_to_token_amount(raw_precise, decimals)
+    
+    return f"""
+    原始数量 - 整数: {raw_int:,}, 精确: {raw_precise:.10f}
+    实际{symbol}数量 - 整数: {actual_int:.{decimals}f}, 精确: {actual_precise:.{decimals+4}f}"""
 
 
 def main():
@@ -10,10 +45,16 @@ def main():
     
     # 预定义的参数（不使用手动输入）
     pool_id = "0x4e68ccd3e89f51c3074ca5072bbac773960dfa36"  # USDC/ETH 0.05% pool
-    mint_number = "23408173"   # mint时的区块号（更早的区块）
+    mint_number = "18408173"   # mint时的区块号（更早的区块）
     block_number = "23438173"  # 当前区块号
-    tick_lower = -201300 # 下边界tick
-    tick_upper = -191340  # 上边界tick
+    tick_lower = -200580 # 下边界tick
+    tick_upper = -191220  # 上边界tick
+    
+    # 代币精度定义 (USDC/ETH pool)
+    token0_decimals = 18   # USDC 精度为 6 位小数
+    token1_decimals = 6  # ETH 精度为 18 位小数
+    token0_symbol = "ETH"
+    token1_symbol = "USDC"
     
     print("=== 从链上获取数据 ===")
     print(f"Pool ID: {pool_id}")
@@ -117,8 +158,8 @@ def main():
     fee_growth_inside_0_last_x128 = fee_growth_inside_0_x128_mint
     fee_growth_inside_1_last_x128 = fee_growth_inside_1_x128_mint
     
-    # 调用update_position函数，计算从mint区块到当前区块之间的手续费变化
-    tokens_owed_0_new, tokens_owed_1_new = update_position(
+    # 调用update_position_precise函数，计算从mint区块到当前区块之间的手续费变化（包含精确小数）
+    tokens_owed_0_int, tokens_owed_0_precise, tokens_owed_1_int, tokens_owed_1_precise = update_position_precise(
         liquidity=liquidity,
         fee_growth_inside_0_x128=fee_growth_inside_0_x128_current,  # 使用当前区块的值
         fee_growth_inside_1_x128=fee_growth_inside_1_x128_current,  # 使用当前区块的值
@@ -126,8 +167,29 @@ def main():
         fee_growth_inside_1_last_x128=fee_growth_inside_1_last_x128   # 使用mint区块的值
     )
     
-    print(f"新产生的token0手续费: {tokens_owed_0_new}")
-    print(f"新产生的token1手续费: {tokens_owed_1_new}")
+    print(f"\n=== 手续费详细信息 ===")
+    print(f"Token0 ({token0_symbol})手续费:{format_fee_display(tokens_owed_0_int, tokens_owed_0_precise, token0_decimals, token0_symbol)}")
+    print(f"\nToken1 ({token1_symbol})手续费:{format_fee_display(tokens_owed_1_int, tokens_owed_1_precise, token1_decimals, token1_symbol)}")
+    
+    # 计算总价值（需要价格信息，这里先显示基础信息）
+    token0_actual = convert_to_token_amount(tokens_owed_0_precise, token0_decimals)
+    token1_actual = convert_to_token_amount(tokens_owed_1_precise, token1_decimals)
+    
+    print(f"\n=== 手续费汇总 ===")
+    print(f"获得的{token0_symbol}: {token0_actual:.{token0_decimals+2}f}")
+    print(f"获得的{token1_symbol}: {token1_actual:.{token1_decimals+2}f}")
+    
+    # 也调用原始版本进行对比
+    print("\n=== 原始整数版本对比 ===")
+    tokens_owed_0_old, tokens_owed_1_old = update_position(
+        liquidity=liquidity,
+        fee_growth_inside_0_x128=fee_growth_inside_0_x128_current,
+        fee_growth_inside_1_x128=fee_growth_inside_1_x128_current,
+        fee_growth_inside_0_last_x128=fee_growth_inside_0_last_x128,
+        fee_growth_inside_1_last_x128=fee_growth_inside_1_last_x128
+    )
+    print(f"原始版本 - token0手续费: {tokens_owed_0_old}")
+    print(f"原始版本 - token1手续费: {tokens_owed_1_old}")
     
     # 总结
     print("\n=== 完整流程总结 ===")
@@ -138,7 +200,9 @@ def main():
     print(f"流动性: {liquidity}")
     print(f"Mint区块区间内手续费增长: token0={fee_growth_inside_0_x128_mint}, token1={fee_growth_inside_1_x128_mint}")
     print(f"当前区块区间内手续费增长: token0={fee_growth_inside_0_x128_current}, token1={fee_growth_inside_1_x128_current}")
-    print(f"从Mint区块到当前区块新产生的手续费: token0={tokens_owed_0_new}, token1={tokens_owed_1_new}")
+    print(f"从Mint区块到当前区块新产生的手续费:")
+    print(f"  {token0_symbol}: {token0_actual:.{token0_decimals+2}f} (原始: {tokens_owed_0_precise:.10f})")
+    print(f"  {token1_symbol}: {token1_actual:.{token1_decimals+2}f} (原始: {tokens_owed_1_precise:.10f})")
 
 
 if __name__ == "__main__":

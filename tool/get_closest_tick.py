@@ -8,4 +8,5 @@ def get_closest_tick(tick):
 #print(get_closest_tick(123343))  # Output: 123360
 #print(get_closest_tick(150344))  # Output: 150360
 #print(get_closest_tick(-123342)) # Output: -123360
-
+print(get_closest_tick(-194570.093686042)) # Output: -194580
+print(get_closest_tick(-191246)) # Output: -191250
