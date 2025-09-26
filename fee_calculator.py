@@ -1,6 +1,7 @@
 from fee_growth_calculator import get_fee_growth_inside
 from position_updater import update_position, update_position_precise
 from GetFeeGrowth import fetch_pool_data
+import math
 
 
 def convert_to_token_amount(raw_amount: float, decimals: int) -> float:
@@ -15,6 +16,24 @@ def convert_to_token_amount(raw_amount: float, decimals: int) -> float:
     - float: 实际代币数量
     """
     return raw_amount / (10 ** decimals)
+
+
+def tick_to_price(tick: int, decimal0: int = 18, decimal1: int = 18) -> float:
+    """
+    将tick转换为价格（token0/token1）
+    
+    参数:
+    - tick: tick值
+    - decimal0, decimal1: 两个币的精度，默认为18
+    
+    返回:
+    - float: 价格
+    """
+    # Uniswap V3 tick公式的逆运算：price = 1.0001 ^ tick
+    price_adj = 1.0001 ** tick
+    # 考虑精度调整
+    price = price_adj * (10 ** decimal0) / (10 ** decimal1)
+    return price
 
 
 def format_fee_display(raw_int: int, raw_precise: float, decimals: int, symbol: str) -> str:
@@ -207,10 +226,16 @@ def calculate_lp_fees(
     
     # 总结
     print("\n=== 完整流程总结 ===")
+    # 计算价格区间
+    price_lower = tick_to_price(tick_lower, token0_decimals, token1_decimals)
+    price_upper = tick_to_price(tick_upper, token0_decimals, token1_decimals)
+    price_mint = tick_to_price(tick_current_mint, token0_decimals, token1_decimals)
+    price_current = tick_to_price(tick_current, token0_decimals, token1_decimals)
+    
     print(f"Pool ID: {pool_id}")
     print(f"Mint区块号: {mint_block_number} (更早), 当前区块号: {current_block_number}")
-    print(f"价格区间: [{tick_lower}, {tick_upper}]")
-    print(f"Mint时tick: {tick_current_mint}, 当前tick: {tick_current}")
+    print(f"价格区间: [{price_lower:.6f}, {price_upper:.6f}] ({token0_symbol}/{token1_symbol})")
+    print(f"Mint时价格: {price_mint:.6f} ({token0_symbol}/{token1_symbol}), 当前价格: {price_current:.6f} ({token0_symbol}/{token1_symbol})")
     print(f"流动性: {liquidity}")
     print(f"Mint区块区间内手续费增长: token0={fee_growth_inside_0_x128_mint}, token1={fee_growth_inside_1_x128_mint}")
     print(f"当前区块区间内手续费增长: token0={fee_growth_inside_0_x128_current}, token1={fee_growth_inside_1_x128_current}")
