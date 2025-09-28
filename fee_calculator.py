@@ -34,6 +34,130 @@ def tick_to_price(tick: int, decimal0: int = 18, decimal1: int = 18) -> float:
     # 考虑精度调整
     price = price_adj * (10 ** decimal0) / (10 ** decimal1)
     return price
+    
+def get_sqrt_price_at_tick(tick: int) -> int:
+    """
+    根据tick计算sqrt价格（Q64.96格式）
+    """
+    import math
+    # 使用更精确的计算方法
+    sqrt_price = math.sqrt(1.0001 ** tick) * (2 ** 96)
+    return int(sqrt_price)
+
+def calculate_liquidity_from_amounts(
+    amount0: float,
+    amount1: float,
+    tick_lower: int,
+    tick_upper: int,
+    tick_current: int,
+    decimal0: int = 18,
+    decimal1: int = 18
+) -> int:
+    """
+    使用Uniswap V3的正确公式计算流动性L
+    公式: (Xr + L/sqrt(Pb)) * (Yr + L*sqrt(Pa)) = L^2
+    注意：这里的L是原始流动性，包含精度
+    """
+    # 将代币数量转换为最小单位
+    amount0_raw = int(amount0 * (10 ** decimal0))
+    amount1_raw = int(amount1 * (10 ** decimal1))
+    
+    # 计算价格（不包含精度调整）
+    price_lower = 1.0001 ** tick_lower
+    price_upper = 1.0001 ** tick_upper
+    
+    # 计算sqrt价格
+    sqrt_price_lower = math.sqrt(price_lower)
+    sqrt_price_upper = math.sqrt(price_upper)
+    
+    print(f"调试信息:")
+    print(f"  amount0_raw: {amount0_raw}")
+    print(f"  amount1_raw: {amount1_raw}")
+    print(f"  price_lower: {price_lower}")
+    print(f"  price_upper: {price_upper}")
+    print(f"  sqrt_price_lower: {sqrt_price_lower}")
+    print(f"  sqrt_price_upper: {sqrt_price_upper}")
+    
+    # 使用Uniswap V3的正确公式
+    # (Xr + L/sqrt(Pb)) * (Yr + L*sqrt(Pa)) = L^2
+    # 展开: Xr*Yr + Xr*L*sqrt(Pa) + Yr*L/sqrt(Pb) + L^2*sqrt(Pa)/sqrt(Pb) = L^2
+    # 整理: L^2*(1 - sqrt(Pa)/sqrt(Pb)) - L*(Xr*sqrt(Pa) + Yr/sqrt(Pb)) - Xr*Yr = 0
+    
+    # 二次方程系数
+    a = 1 - sqrt_price_lower / sqrt_price_upper
+    b = -(amount0_raw * sqrt_price_lower + amount1_raw / sqrt_price_upper)
+    c = -amount0_raw * amount1_raw
+    
+    print(f"二次方程系数:")
+    print(f"  a: {a}")
+    print(f"  b: {b}")
+    print(f"  c: {c}")
+    
+    # 求解二次方程: a*L^2 + b*L + c = 0
+    discriminant = b * b - 4 * a * c
+    if discriminant < 0:
+        print("错误: 判别式小于0，无解")
+        return 0
+    
+    # 取正根
+    liquidity = (-b + math.sqrt(discriminant)) / (2 * a)
+    
+    print(f"计算的流动性: {liquidity}")
+    
+    return int(liquidity)
+
+def calculate_amounts_from_liquidity(
+    liquidity: int,
+    tick_lower: int,
+    tick_upper: int,
+    tick_current: int,
+    decimal0: int = 18,
+    decimal1: int = 18
+) -> tuple[float, float]:
+    """
+    根据流动性L计算对应的amount0和amount1
+    
+    参数:
+    - liquidity: 流动性L
+    - tick_lower: 下边界tick
+    - tick_upper: 上边界tick
+    - tick_current: 当前tick
+    - decimal0: token0精度
+    - decimal1: token1精度
+    
+    返回:
+    - tuple[float, float]: (amount0, amount1) 实际代币数量
+    """
+    
+    # 计算价格
+    price_current = tick_to_price(tick_current, decimal0, decimal1)
+    price_lower = tick_to_price(tick_lower, decimal0, decimal1)
+    price_upper = tick_to_price(tick_upper, decimal0, decimal1)
+    
+    # 计算sqrt价格
+    sqrt_price_current = math.sqrt(price_current)
+    sqrt_price_lower = math.sqrt(price_lower)
+    sqrt_price_upper = math.sqrt(price_upper)
+    
+    # 根据当前价格位置计算代币数量
+    if tick_current < tick_lower:
+        # 当前价格低于区间，只有token0
+        amount0_raw = liquidity * (1/sqrt_price_lower - 1/sqrt_price_upper)
+        amount1_raw = 0
+    elif tick_current >= tick_upper:
+        # 当前价格高于区间，只有token1
+        amount0_raw = 0
+        amount1_raw = liquidity * (sqrt_price_upper - sqrt_price_lower)
+    else:
+        # 当前价格在区间内，两种代币都有
+        amount0_raw = liquidity * (1/sqrt_price_current - 1/sqrt_price_upper)
+        amount1_raw = liquidity * (sqrt_price_current - sqrt_price_lower)
+    
+    # 转换为实际代币数量
+    amount0 = amount0_raw / (10 ** decimal0)
+    amount1 = amount1_raw / (10 ** decimal1)
+    
+    return amount0, amount1
 
 
 def format_fee_display(raw_int: int, raw_precise: float, decimals: int, symbol: str) -> str:
@@ -270,6 +394,51 @@ def calculate_lp_fees(
     }
 
 
+def verify_pool_configuration():
+    """
+    验证池子配置是否正确
+    """
+    print("=== 池子配置验证 ===")
+    
+    # 测试价格计算
+    test_tick = -193200
+    print(f"测试tick: {test_tick}")
+    
+    # 假设 ETH 是 token0，USDC 是 token1
+    price_eth_usdc = tick_to_price(test_tick, 18, 6)
+    print(f"ETH/USDC 价格: {price_eth_usdc:.6f}")
+    
+    # 假设 USDC 是 token0，ETH 是 token1  
+    price_usdc_eth = tick_to_price(test_tick, 6, 18)
+    print(f"USDC/ETH 价格: {price_usdc_eth:.6f}")
+    
+    # 验证反向计算
+    import sys
+    import os
+    sys.path.append(os.path.join(os.path.dirname(__file__), 'tool'))
+    
+    from tool.get_tick_by_price import get_tick_by_price
+    from tool.get_closest_tick import get_closest_tick
+    
+    tick_from_price1 = get_closest_tick(get_tick_by_price(price_eth_usdc, 18, 6))
+    tick_from_price2 = get_closest_tick(get_tick_by_price(1/price_usdc_eth, 6, 18))
+    
+    print(f"从价格反推tick (ETH/USDC): {tick_from_price1}")
+    print(f"从价格反推tick (USDC/ETH): {tick_from_price2}")
+    
+    # 检查哪个更接近原始tick
+    diff1 = abs(tick_from_price1 - test_tick)
+    diff2 = abs(tick_from_price2 - test_tick)
+    
+    print(f"差异1: {diff1}, 差异2: {diff2}")
+    
+    if diff1 < diff2:
+        print("✅ 正确的配置: ETH是token0, USDC是token1")
+        return True, 18, 6, "ETH", "USDC"
+    else:
+        print("✅ 正确的配置: USDC是token0, ETH是token1")
+        return False, 6, 18, "USDC", "ETH"
+
 # ===== 示例使用方式 =====
 def example_usage():
     """
@@ -277,19 +446,62 @@ def example_usage():
     """
     print("=== LP手续费计算器示例使用 ===\n")
     
-    # 参数设置（参考原main.py文件）
-    pool_id = "0x4e68ccd3e89f51c3074ca5072bbac773960dfa36"  # USDC/ETH 0.05% pool
-    mint_block_number = "18408173"   # mint时的区块号（更早的区块）
-    current_block_number = "23438173"  # 当前区块号
-    tick_lower = -200580  # 下边界tick
-    tick_upper = -191220  # 上边界tick
-    liquidity = 500000    # 流动性数量
+    # 验证池子配置
+    is_eth_token0, token0_decimals, token1_decimals, token0_symbol, token1_symbol = verify_pool_configuration()
     
-    # 代币精度定义 (USDC/ETH pool)
-    token0_decimals = 18   # ETH 精度为 18 位小数
-    token1_decimals = 6    # USDC 精度为 6 位小数
-    token0_symbol = "ETH"
-    token1_symbol = "USDC"
+    # 参数设置
+    pool_id = "0x4e68ccd3e89f51c3074ca5072bbac773960dfa36"  # USDC/ETH 0.05% pool
+    mint_block_number = "23436334"   # mint时的区块号（更早的区块）
+    current_block_number = "23457779"  # 当前区块号
+    tick_lower = -194100  # 下边界tick
+    tick_upper = -192120 # 上边界tick
+    
+    # 示例：从代币数量计算流动性
+    print("=== 流动性计算示例 ===")
+    amount0 = 1.14841738  # 1.14841738 ETH
+    amount1 = 5257  # 5257 USDC
+    tick_current = -193200  # 当前tick
+    
+    # 根据验证结果调整代币数量
+    if is_eth_token0:
+        # ETH是token0, USDC是token1
+        eth_amount = amount0
+        usdc_amount = amount1
+    else:
+        # USDC是token0, ETH是token1
+        eth_amount = amount1
+        usdc_amount = amount0
+    
+    print(f"调整后的代币数量:")
+    print(f"  {token0_symbol}: {eth_amount if is_eth_token0 else usdc_amount}")
+    print(f"  {token1_symbol}: {usdc_amount if is_eth_token0 else eth_amount}")
+    
+    liquidity = calculate_liquidity_from_amounts(
+        amount0=eth_amount if is_eth_token0 else usdc_amount,
+        amount1=usdc_amount if is_eth_token0 else eth_amount,
+        tick_lower=tick_lower,
+        tick_upper=tick_upper,
+        tick_current=tick_current,
+        decimal0=token0_decimals,
+        decimal1=token1_decimals
+    )
+    
+    print(f"输入: {eth_amount if is_eth_token0 else usdc_amount} {token0_symbol} + {usdc_amount if is_eth_token0 else eth_amount} {token1_symbol}")
+    print(f"计算得到的流动性: {liquidity}")
+    
+    # 验证：从流动性反推代币数量
+    calculated_amount0, calculated_amount1 = calculate_amounts_from_liquidity(
+        liquidity=liquidity,
+        tick_lower=tick_lower,
+        tick_upper=tick_upper,
+        tick_current=tick_current,
+        decimal0=token0_decimals,
+        decimal1=token1_decimals
+    )
+    
+    print(f"验证: 流动性 {liquidity} 对应的代币数量:")
+    print(f"  {token0_symbol}: {calculated_amount0:.6f}")
+    print(f"  {token1_symbol}: {calculated_amount1:.2f}")
     
     # 调用计算函数
     result = calculate_lp_fees(
