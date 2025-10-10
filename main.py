@@ -44,11 +44,11 @@ def main():
     """
     
     # 预定义的参数（不使用手动输入）
-    pool_id = "0x4e68ccd3e89f51c3074ca5072bbac773960dfa36"  # USDC/ETH 0.05% pool
-    mint_number = "23522162"   # mint时的区块号（更早的区块）
-    block_number= "23544761"  # 当前区块号
+    pool_id = "0xC6962004f452bE9203591991D15f6b388e09E8D0"  # USDC/ETH 0.05% pool
+    mint_number = "386890000"   # mint时的区块号（更早的区块）
+    block_number= "387900000"  # 当前区块号
     tick_lower = -192840 # 下边界tick
-    tick_upper = -190800  # 上边界tick
+    tick_upper = -190800 # 上边界tick
     
     # 代币精度定义 (USDC/ETH pool)
     token0_decimals = 18   # USDC 精度为 6 位小数
@@ -64,18 +64,20 @@ def main():
     
     # 第一步：从链上获取mint区块的lower tick数据
     print(f"\n第一步：获取mint区块({mint_number})的下边界tick数据")
-    lower_fee_growth_outside_0_x128_mint, lower_fee_growth_outside_1_x128_mint, fee_growth_global_0_x128_mint, fee_growth_global_1_x128_mint, tick_current_mint = fetch_pool_data(pool_id, mint_number, tick_lower)
+    lower_fee_growth_outside_0_x128_mint, lower_fee_growth_outside_1_x128_mint, fee_growth_global_0_x128_mint, fee_growth_global_1_x128_mint, tick_current_mint, resolved_tick_lower_mint = fetch_pool_data(pool_id, mint_number, tick_lower)
     
     # 第二步：获取mint区块的上边界tick数据
     print(f"\n第二步：获取mint区块({mint_number})的上边界tick数据")
-    upper_fee_growth_outside_0_x128_mint, upper_fee_growth_outside_1_x128_mint, _, _, _ = fetch_pool_data(pool_id, mint_number, tick_upper)
+    upper_fee_growth_outside_0_x128_mint, upper_fee_growth_outside_1_x128_mint, _, _, _, resolved_tick_upper_mint = fetch_pool_data(pool_id, mint_number, tick_upper)
     
     # 第三步：获取当前区块的数据
     print(f"\n第三步：获取当前区块({block_number})的下边界tick数据")
-    lower_fee_growth_outside_0_x128, lower_fee_growth_outside_1_x128, fee_growth_global_0_x128, fee_growth_global_1_x128, tick_current = fetch_pool_data(pool_id, block_number, tick_lower)
+    tick_lower_for_current = resolved_tick_lower_mint if resolved_tick_lower_mint is not None else tick_lower
+    lower_fee_growth_outside_0_x128, lower_fee_growth_outside_1_x128, fee_growth_global_0_x128, fee_growth_global_1_x128, tick_current, _ = fetch_pool_data(pool_id, block_number, tick_lower_for_current)
     
     print(f"\n第四步：获取当前区块({block_number})的上边界tick数据")
-    upper_fee_growth_outside_0_x128, upper_fee_growth_outside_1_x128, _, _, _ = fetch_pool_data(pool_id, block_number, tick_upper)
+    tick_upper_for_current = resolved_tick_upper_mint if resolved_tick_upper_mint is not None else tick_upper
+    upper_fee_growth_outside_0_x128, upper_fee_growth_outside_1_x128, _, _, _, _ = fetch_pool_data(pool_id, block_number, tick_upper_for_current)
     
     # 检查数据获取是否成功
     if (lower_fee_growth_outside_0_x128_mint is None or upper_fee_growth_outside_0_x128_mint is None or 
