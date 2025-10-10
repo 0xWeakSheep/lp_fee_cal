@@ -7,6 +7,8 @@ load_dotenv()
 
 URL = os.getenv("GRAPH_API_URL")
 API_KEY = os.getenv("GRAPH_API_KEY")
+TICK_SPACING = int(os.getenv("TICK_SPACING", "60"))  # 默认值为60
+MAX_SEARCH_ATTEMPTS = int(os.getenv("MAX_SEARCH_ATTEMPTS", "10"))  # 默认搜索10次
 
 def build_query(pool_id, block_number, tick):
     tick_id = f"{pool_id}#{tick}"
@@ -31,7 +33,7 @@ def build_query(pool_id, block_number, tick):
 
 def fetch_pool_data(pool_id, block_number, tick):
     """
-    获取池子数据，如果tick未激活或feeGrowthOutside为0则自动减去60重试
+    获取池子数据，如果tick未激活或feeGrowthOutside为0则先向下搜索，再向上搜索
     """
     headers = {
         "Authorization": f"Bearer {API_KEY}"
@@ -40,9 +42,10 @@ def fetch_pool_data(pool_id, block_number, tick):
     # 保存原始tick用于后续调整
     original_tick = tick
     adjustment_made = False
-
-    # 最多尝试10次（防止无限循环）
-    for attempt in range(10):
+    
+    # 交替搜索策略: -TICK_SPACING, +TICK_SPACING, -2*TICK_SPACING, +2*TICK_SPACING...
+    
+    for attempt in range(1, MAX_SEARCH_ATTEMPTS + 1):
         query = build_query(pool_id, block_number, tick)
         resp = requests.post(URL, json={'query': query}, headers=headers)
 
@@ -73,46 +76,44 @@ def fetch_pool_data(pool_id, block_number, tick):
 
             # 检查feeGrowthOutside是否为0（表示tick未激活）
             if fee_growth_outside_0_x128 == 0 and fee_growth_outside_1_x128 == 0:
-                print(f"⚠️  tick {tick} 的feeGrowthOutside为0，尝试tick {tick - 60}")
-                tick -= 60
+                print(f"⚠️  tick {tick} 的feeGrowthOutside为0，继续搜索...")
                 adjustment_made = True
+            else:
+                # 找到了有效的tick数据
+                if adjustment_made:
+                    tick_diff = abs(original_tick - tick)
+                    direction_str = "向下" if tick < original_tick else "向上"
+                    print(f"⚠️  原始tick {original_tick} 未激活，{direction_str}找到tick {tick} 的数据")
+                    print(f"📊 调整幅度: {tick_diff} 个tick")
 
-                # 可选：设置一个最小tick限制，防止减到负数过大
-                if tick < -887220:  # Uniswap V3 的最小tick值
-                    print("❌ 已达到最小tick限制，无法继续查找")
-                    return None, None, None, None, None
-                continue  # 继续循环尝试下一个tick
+                    # 简单的线性调整（基于tick间距）
+                    adjustment_factor = tick_diff / TICK_SPACING
 
-            # 如果进行了调整，需要对结果进行相应调整
-            if adjustment_made:
-                tick_diff = original_tick - tick  # 计算调整的tick差值
-                print(f"⚠️  原始tick {original_tick} 未激活，使用tick {tick} 的数据")
-                print(f"📊 调整幅度: {tick_diff} 个tick")
+                    # 调整手续费增长（这里使用简化模型）
+                    fee_growth_outside_0_x128 = int(fee_growth_outside_0_x128 * (1 + adjustment_factor * 0.01))
+                    fee_growth_outside_1_x128 = int(fee_growth_outside_1_x128 * (1 + adjustment_factor * 0.01))
 
-                # 简单的线性调整（基于tick间距）
-                tick_spacing = 60
-                adjustment_factor = tick_diff / tick_spacing  # 调整的tick间距数量
+                print(f"✅ 成功获取tick {tick} 的数据")
+                return fee_growth_outside_0_x128, fee_growth_outside_1_x128, fee_growth_global_0_x128, fee_growth_global_1_x128, current_tick
 
-                # 调整手续费增长（这里使用简化模型）
-                fee_growth_outside_0_x128 = int(fee_growth_outside_0_x128 * (1 + adjustment_factor * 0.01))  # 1%的调整系数
-                fee_growth_outside_1_x128 = int(fee_growth_outside_1_x128 * (1 + adjustment_factor * 0.01))
+        # 没有找到tick数据或feeGrowthOutside为0，交替搜索
+        # 计算下一个tick: -TICK_SPACING, +TICK_SPACING, -2*TICK_SPACING, +2*TICK_SPACING...
+        step = (attempt + 1) // 2  # 1,1,2,2,3,3...
+        direction = -1 if attempt % 2 == 1 else 1  # -1,+1,-1,+1...
+        next_tick = original_tick + direction * step * TICK_SPACING
+        
+        # 检查tick边界
+        if next_tick < -887220 or next_tick > 887220:
+            print(f"⚠️  tick {next_tick} 超出边界，跳过")
+            continue
+            
+        tick = next_tick
+        adjustment_made = True
+        direction_str = "向下" if direction == -1 else "向上"
+        print(f"🔄 {direction_str}搜索: tick {tick} (步长 {step * TICK_SPACING})")
 
-            print(f"✅ 成功获取tick {tick} 的数据")
-            return fee_growth_outside_0_x128, fee_growth_outside_1_x128, fee_growth_global_0_x128, fee_growth_global_1_x128, current_tick
-
-        else:
-            # 没有找到tick数据，尝试减去60
-            print(f"🔄 tick {tick} 未激活，尝试tick {tick - 60}")
-            tick -= 60
-            adjustment_made = True
-
-            # 可选：设置一个最小tick限制，防止减到负数过大
-            if tick < -887220:  # Uniswap V3 的最小tick值
-                print("❌ 已达到最小tick限制，无法继续查找")
-                return None, None, None, None, None
-
-    # 如果尝试了10次都没找到，返回None
-    print(f"❌ 尝试了10次仍未找到激活的tick，原始tick: {original_tick}")
+    # 如果搜索完毕都没找到，返回None
+    print(f"❌ 尝试了{MAX_SEARCH_ATTEMPTS}次仍未找到激活的tick，原始tick: {original_tick}")
     return None, None, None, None, None
 
 #测试代码
