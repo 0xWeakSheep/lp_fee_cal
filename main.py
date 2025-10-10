@@ -45,10 +45,10 @@ def main():
     
     # 预定义的参数（不使用手动输入）
     pool_id = "0x4e68ccd3e89f51c3074ca5072bbac773960dfa36"  # USDC/ETH 0.05% pool
-    mint_number = "18408173"   # mint时的区块号（更早的区块）
-    block_number = "23438173"  # 当前区块号
-    tick_lower = -200580 # 下边界tick
-    tick_upper = -191220  # 上边界tick
+    mint_number = "16812993"   # mint时的区块号（更早的区块）
+    block_number = "16823975"  # 当前区块号
+    tick_lower = -199200 # 下边界tick
+    tick_upper = -198840  # 上边界tick
     
     # 代币精度定义 (USDC/ETH pool)
     token0_decimals = 18   # USDC 精度为 6 位小数
@@ -153,7 +153,7 @@ def main():
     print("\n第七步：更新头寸并计算新产生的手续费")
     
     # 头寸相关参数
-    liquidity = 500000
+    liquidity = 1e16
     # 使用mint区块的手续费增长作为起始值（上次记录的值）
     fee_growth_inside_0_last_x128 = fee_growth_inside_0_x128_mint
     fee_growth_inside_1_last_x128 = fee_growth_inside_1_x128_mint
