@@ -46,7 +46,7 @@ def main():
     # 预定义的参数（不使用手动输入）
     pool_id = "0x4e68ccd3e89f51c3074ca5072bbac773960dfa36"  # USDC/ETH 0.05% pool
     mint_number = "16812993"   # mint时的区块号（更早的区块）
-    block_number = "16823975"  # 当前区块号
+    block_number= "16823975"  # 当前区块号
     tick_lower = -199200 # 下边界tick
     tick_upper = -198840  # 上边界tick
     
