@@ -32,14 +32,26 @@ def get_fee_growth_inside(
         fee_growth_below_0_x128 = lower_fee_growth_outside_0_x128
         fee_growth_below_1_x128 = lower_fee_growth_outside_1_x128
     else:
+        print("小于区间")
         fee_growth_below_0_x128 = fee_growth_global_0_x128 - lower_fee_growth_outside_0_x128
+        print("增长")
+        print(lower_fee_growth_outside_0_x128)
+        print(fee_growth_below_0_x128)
+        print("预估")
+        print(upper_fee_growth_outside_0_x128-lower_fee_growth_outside_0_x128)
+        fee_growth_inside_0_x128=upper_fee_growth_outside_0_x128-lower_fee_growth_outside_0_x128
         fee_growth_below_1_x128 = fee_growth_global_1_x128 - lower_fee_growth_outside_1_x128
+        fee_growth_inside_1_x128=upper_fee_growth_outside_1_x128-lower_fee_growth_outside_1_x128
+        print(fee_growth_inside_0_x128)
+        return fee_growth_inside_0_x128, fee_growth_inside_1_x128
+    
 
     # 计算上方手续费增长
     if tick_current < tick_upper:
         fee_growth_above_0_x128 = upper_fee_growth_outside_0_x128
         fee_growth_above_1_x128 = upper_fee_growth_outside_1_x128
     else:
+        print("大于区间")
         fee_growth_above_0_x128 = fee_growth_global_0_x128 - upper_fee_growth_outside_0_x128
         fee_growth_above_1_x128 = fee_growth_global_1_x128 - upper_fee_growth_outside_1_x128
 
