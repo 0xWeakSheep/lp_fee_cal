@@ -3,6 +3,77 @@ from position_updater import update_position, update_position_precise
 from GetFeeGrowth import fetch_pool_data
 
 
+def fetch_aligned_boundary(pool_id: str, mint_block: str, current_block: str, initial_tick: int, label: str) -> tuple:
+    """获取在两个区块中对齐后的边界tick数据，确保偏移一致。"""
+
+    target_tick = initial_tick
+    last_mint_data = None
+    last_current_data = None
+
+    for _ in range(4):
+        mint_data = fetch_pool_data(pool_id, mint_block, target_tick)
+        if mint_data[0] is None:
+            return (None,) * 3
+
+        (
+            lower_fee_growth_outside_0_x128,
+            lower_fee_growth_outside_1_x128,
+            fee_growth_global_0_x128,
+            fee_growth_global_1_x128,
+            mint_tick_current,
+            resolved_tick_mint,
+        ) = mint_data
+
+        resolved_tick_mint = resolved_tick_mint if resolved_tick_mint is not None else target_tick
+
+        current_data = fetch_pool_data(pool_id, current_block, resolved_tick_mint)
+        if current_data[0] is None:
+            return (None,) * 3
+
+        (
+            lower_fee_growth_outside_0_x128_current,
+            lower_fee_growth_outside_1_x128_current,
+            fee_growth_global_0_x128_current,
+            fee_growth_global_1_x128_current,
+            current_tick,
+            resolved_tick_current,
+        ) = current_data
+
+        resolved_tick_current = resolved_tick_current if resolved_tick_current is not None else resolved_tick_mint
+
+        last_mint_data = (
+            lower_fee_growth_outside_0_x128,
+            lower_fee_growth_outside_1_x128,
+            fee_growth_global_0_x128,
+            fee_growth_global_1_x128,
+            mint_tick_current,
+            resolved_tick_mint,
+        )
+        last_current_data = (
+            lower_fee_growth_outside_0_x128_current,
+            lower_fee_growth_outside_1_x128_current,
+            fee_growth_global_0_x128_current,
+            fee_growth_global_1_x128_current,
+            current_tick,
+            resolved_tick_current,
+        )
+
+        if resolved_tick_current == resolved_tick_mint:
+            if resolved_tick_current != initial_tick:
+                print(
+                    f"⚠️  {label} tick对齐到 {resolved_tick_current} (原始 {initial_tick})"
+                )
+            return last_mint_data, last_current_data, resolved_tick_current
+
+        print(
+            f"⚠️  {label} tick在两个区块解析不同 (mint: {resolved_tick_mint}, 当前: {resolved_tick_current})，尝试重新对齐..."
+        )
+        target_tick = resolved_tick_current
+
+    print(f"⚠️  {label} tick多次尝试仍未完全一致，使用 {target_tick}")
+    return last_mint_data, last_current_data, target_tick
+
+
 def convert_to_token_amount(raw_amount: float, decimals: int) -> float:
     """
     将原始数量转换为实际的代币数量
@@ -62,26 +133,70 @@ def main():
     print(f"当前区块号: {block_number}")
     print(f"查询Tick范围: [{tick_lower}, {tick_upper}]")
     
-    # 第一步：从链上获取mint区块的lower tick数据
-    print(f"\n第一步：获取mint区块({mint_number})的下边界tick数据")
-    lower_fee_growth_outside_0_x128_mint, lower_fee_growth_outside_1_x128_mint, fee_growth_global_0_x128_mint, fee_growth_global_1_x128_mint, tick_current_mint, resolved_tick_lower_mint = fetch_pool_data(pool_id, mint_number, tick_lower)
-    
-    # 第二步：获取mint区块的上边界tick数据
-    print(f"\n第二步：获取mint区块({mint_number})的上边界tick数据")
-    upper_fee_growth_outside_0_x128_mint, upper_fee_growth_outside_1_x128_mint, _, _, _, resolved_tick_upper_mint = fetch_pool_data(pool_id, mint_number, tick_upper)
-    
-    # 第三步：获取当前区块的数据
-    print(f"\n第三步：获取当前区块({block_number})的下边界tick数据")
-    tick_lower_for_current = resolved_tick_lower_mint if resolved_tick_lower_mint is not None else tick_lower
-    lower_fee_growth_outside_0_x128, lower_fee_growth_outside_1_x128, fee_growth_global_0_x128, fee_growth_global_1_x128, tick_current, _ = fetch_pool_data(pool_id, block_number, tick_lower_for_current)
-    
-    print(f"\n第四步：获取当前区块({block_number})的上边界tick数据")
-    tick_upper_for_current = resolved_tick_upper_mint if resolved_tick_upper_mint is not None else tick_upper
-    upper_fee_growth_outside_0_x128, upper_fee_growth_outside_1_x128, _, _, _, _ = fetch_pool_data(pool_id, block_number, tick_upper_for_current)
-    
+    print(f"\n第一步：对齐mint区块与当前区块的下边界tick数据")
+    lower_mint_data, lower_current_data, tick_lower_effective = fetch_aligned_boundary(
+        pool_id,
+        mint_number,
+        block_number,
+        tick_lower,
+        "下边界",
+    )
+
+    print(f"\n第二步：对齐mint区块与当前区块的上边界tick数据")
+    upper_mint_data, upper_current_data, tick_upper_effective = fetch_aligned_boundary(
+        pool_id,
+        mint_number,
+        block_number,
+        tick_upper,
+        "上边界",
+    )
+
+    use_fallback = (
+        lower_mint_data is None
+        or lower_current_data is None
+        or upper_mint_data is None
+        or upper_current_data is None
+    )
+
+    if not use_fallback:
+        (
+            lower_fee_growth_outside_0_x128_mint,
+            lower_fee_growth_outside_1_x128_mint,
+            fee_growth_global_0_x128_mint,
+            fee_growth_global_1_x128_mint,
+            tick_current_mint,
+            _,
+        ) = lower_mint_data
+
+        (
+            lower_fee_growth_outside_0_x128,
+            lower_fee_growth_outside_1_x128,
+            fee_growth_global_0_x128,
+            fee_growth_global_1_x128,
+            tick_current,
+            _,
+        ) = lower_current_data
+
+        (
+            upper_fee_growth_outside_0_x128_mint,
+            upper_fee_growth_outside_1_x128_mint,
+            _,
+            _,
+            _,
+            _,
+        ) = upper_mint_data
+
+        (
+            upper_fee_growth_outside_0_x128,
+            upper_fee_growth_outside_1_x128,
+            _,
+            _,
+            _,
+            _,
+        ) = upper_current_data
+
     # 检查数据获取是否成功
-    if (lower_fee_growth_outside_0_x128_mint is None or upper_fee_growth_outside_0_x128_mint is None or 
-        lower_fee_growth_outside_0_x128 is None or upper_fee_growth_outside_0_x128 is None):
+    if use_fallback:
         print("获取链上数据失败，使用示例数据")
         # 使用示例数据 - mint区块
         tick_current_mint = 0
@@ -100,6 +215,8 @@ def main():
         lower_fee_growth_outside_1_x128 = 100000
         upper_fee_growth_outside_0_x128 = 30000
         upper_fee_growth_outside_1_x128 = 60000
+        tick_lower_effective = tick_lower
+        tick_upper_effective = tick_upper
     else:
         print(f"Mint区块下边界Fee Growth Outside 0: {lower_fee_growth_outside_0_x128_mint}")
         print(f"Mint区块下边界Fee Growth Outside 1: {lower_fee_growth_outside_1_x128_mint}")
@@ -112,14 +229,18 @@ def main():
         print(f"当前区块全局Fee Growth 0: {fee_growth_global_0_x128}")
         print(f"当前区块全局Fee Growth 1: {fee_growth_global_1_x128}")
         print(f"当前Tick: {tick_current}")
-    
+        if tick_lower_effective != tick_lower or tick_upper_effective != tick_upper:
+            print(
+                f"使用对齐后的tick范围: 下边界 {tick_lower_effective}, 上边界 {tick_upper_effective}"
+            )
+
     # 第五步：计算mint区块的区间内手续费增长
     print("\n第五步：计算mint区块的区间内手续费增长")
-    
+
     # 调用手续费增长计算函数（mint区块）
     fee_growth_inside_0_x128_mint, fee_growth_inside_1_x128_mint = get_fee_growth_inside(
-        tick_lower=tick_lower,
-        tick_upper=tick_upper,
+        tick_lower=tick_lower_effective,
+        tick_upper=tick_upper_effective,
         tick_current=tick_current_mint,
         fee_growth_global_0_x128=fee_growth_global_0_x128_mint,
         fee_growth_global_1_x128=fee_growth_global_1_x128_mint,
@@ -137,8 +258,8 @@ def main():
     
     # 调用手续费增长计算函数（当前区块）
     fee_growth_inside_0_x128_current, fee_growth_inside_1_x128_current = get_fee_growth_inside(
-        tick_lower=tick_lower,
-        tick_upper=tick_upper,
+        tick_lower=tick_lower_effective,
+        tick_upper=tick_upper_effective,
         tick_current=tick_current,
         fee_growth_global_0_x128=fee_growth_global_0_x128,
         fee_growth_global_1_x128=fee_growth_global_1_x128,
@@ -197,7 +318,12 @@ def main():
     print("\n=== 完整流程总结 ===")
     print(f"Pool ID: {pool_id}")
     print(f"Mint区块号: {mint_number} (更早), 当前区块号: {block_number}")
-    print(f"价格区间: [{tick_lower}, {tick_upper}]")
+    if tick_lower_effective != tick_lower or tick_upper_effective != tick_upper:
+        print(
+            f"价格区间(原始): [{tick_lower}, {tick_upper}], 实际计算使用: [{tick_lower_effective}, {tick_upper_effective}]"
+        )
+    else:
+        print(f"价格区间: [{tick_lower_effective}, {tick_upper_effective}]")
     print(f"Mint时tick: {tick_current_mint}, 当前tick: {tick_current}")
     print(f"流动性: {liquidity}")
     print(f"Mint区块区间内手续费增长: token0={fee_growth_inside_0_x128_mint}, token1={fee_growth_inside_1_x128_mint}")
