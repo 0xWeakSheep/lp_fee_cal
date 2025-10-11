@@ -45,10 +45,10 @@ def main():
     
     # 预定义的参数（不使用手动输入）
     pool_id = "0xC6962004f452bE9203591991D15f6b388e09E8D0"  # USDC/ETH 0.05% pool
-    mint_number = "386890000"   # mint时的区块号（更早的区块）
-    block_number= "387900000"  # 当前区块号
-    tick_lower = -192840 # 下边界tick
-    tick_upper = -190800 # 上边界tick
+    mint_number = "174223195"   # mint时的区块号（更早的区块）
+    block_number= "175232417"  # 当前区块号
+    tick_lower = -199950 # 下边界tick
+    tick_upper = -199530 # 上边界tick
     
     # 代币精度定义 (USDC/ETH pool)
     token0_decimals = 18   # USDC 精度为 6 位小数

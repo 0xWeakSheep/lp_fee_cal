@@ -59,6 +59,12 @@ def get_fee_growth_inside(
     fee_growth_inside_0_x128 = fee_growth_global_0_x128 - fee_growth_below_0_x128 - fee_growth_above_0_x128
     fee_growth_inside_1_x128 = fee_growth_global_1_x128 - fee_growth_below_1_x128 - fee_growth_above_1_x128
 
+    # 判断正负，如果是负的就转正
+    if fee_growth_inside_0_x128 < 0:
+        fee_growth_inside_0_x128 = abs(fee_growth_inside_0_x128)
+    if fee_growth_inside_1_x128 < 0:
+        fee_growth_inside_1_x128 = abs(fee_growth_inside_1_x128)
+
     return fee_growth_inside_0_x128, fee_growth_inside_1_x128
 
 
