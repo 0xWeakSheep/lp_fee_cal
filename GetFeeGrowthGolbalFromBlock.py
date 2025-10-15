@@ -48,6 +48,8 @@ def get_block_number_by_timestamp(target_timestamp, max_iterations=100):
         print("时间戳不能为负数：", target)
         return None
 
+    print(f"[get_block_number_by_timestamp] 目标时间戳: {target}")
+
     payload_latest = {
         "jsonrpc": "2.0",
         "id": 1,
@@ -63,6 +65,8 @@ def get_block_number_by_timestamp(target_timestamp, max_iterations=100):
         print("获取最新区块失败：", exc)
         return None
 
+    print(f"[get_block_number_by_timestamp] 最新区块号: {highest_block}")
+
     low, high = 0, highest_block
     best_block = None
     iterations = 0
@@ -70,6 +74,7 @@ def get_block_number_by_timestamp(target_timestamp, max_iterations=100):
     while low <= high and iterations < max_iterations:
         iterations += 1
         mid = (low + high) // 2
+        print(f"[get_block_number_by_timestamp] 第{iterations}次迭代，当前区块范围: {low}-{high}，尝试区块: {mid}")
         payload_block = {
             "jsonrpc": "2.0",
             "id": 1,
@@ -86,7 +91,10 @@ def get_block_number_by_timestamp(target_timestamp, max_iterations=100):
             print("获取区块信息失败：", exc)
             return None
 
+        print(f"[get_block_number_by_timestamp] 区块 {mid} 时间戳: {block_timestamp}")
+
         if block_timestamp == target:
+            print(f"[get_block_number_by_timestamp] 精确匹配到区块: {mid}")
             return mid
         if block_timestamp < target:
             best_block = mid
@@ -94,12 +102,10 @@ def get_block_number_by_timestamp(target_timestamp, max_iterations=100):
         else:
             high = mid - 1
 
+    print(f"[get_block_number_by_timestamp] 查找结束，返回区块: {best_block}")
     return best_block
 
 
-
-#<要求>帮我实现两次get_block_number_by_timestamp请求封装，会输入两个时间戳（max_iterations用默认值不要输入），然后再输入一个 blockday(默认为345600)，然后从第一个时间戳对应的blocknumber开始，每 blockday 去 fetch_pool_data 获取数据，并返回一个列表，列表中包含每个 blockday 对应的 pool 数据，到第二个输入的时间戳对应的 blocknumber为止。
-#<提示>总结一下，这个函数输入值为(起始时间戳，结束的时间戳，blockday，pool_id)
 
 
 
@@ -110,7 +116,13 @@ def get_block_number_by_timestamp(target_timestamp, max_iterations=100):
 def fetch_pool_series_by_blockday(start_timestamp, end_timestamp, blockday=345600, pool_id=None):
     pool_id = pool_id or ""
     start_block = get_block_number_by_timestamp(start_timestamp)
-    end_block = get_block_number_by_timestamp(end_timestamp)
+    if start_block is None:
+        return []
+
+    if end_timestamp == start_timestamp:
+        end_block = start_block
+    else:
+        end_block = get_block_number_by_timestamp(end_timestamp)
     if start_block is None or end_block is None or not pool_id:
         return []
     if blockday is None:
@@ -125,12 +137,16 @@ def fetch_pool_series_by_blockday(start_timestamp, end_timestamp, blockday=34560
     while current_block <= target_block:
         pool_data = fetch_pool_data(pool_id, current_block)
         if pool_data:
-            data_points.append(pool_data)
+            enriched = pool_data.copy()
+            enriched['blockNumber'] = current_block
+            data_points.append(enriched)
         current_block += step
-    if current_block - step < target_block:
+    if current_block - step < target_block and target_block != start_block:
         final_data = fetch_pool_data(pool_id, target_block)
         if final_data:
-            data_points.append(final_data)
+            enriched_final = final_data.copy()
+            enriched_final['blockNumber'] = target_block
+            data_points.append(enriched_final)
     return data_points
 
 #测试代码

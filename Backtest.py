@@ -9,15 +9,15 @@ import GraphBacktest
 import charts
 
 # 网络选择: 1=以太坊主网, 2=Arbitrum, 3=Optimism
-network = 1  # Ethereum 主网
+network = 2  # Ethereum 主网
 
 # 各种池子地址
 Adress = "0x88e6a0c2ddd26feeb64f039a2c41296fcb3f5640"  # USDC/ETH 主网池子
 
 # 方式2：使用日期字符串（自动转换为时间戳）
 from datetime import datetime, timezone
-start_date = "2025-10-11"  # 开始日期
-end_date = "2025-10-14"    # 结束日期
+start_date = "2025-09-11"  # 开始日期
+end_date = "2025-09-14"    # 结束日期
 
 # 将日期字符串转换为UTC时间戳（确保时区一致）
 start_dt = datetime.strptime(start_date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
@@ -46,7 +46,7 @@ dpd['fg1'] = ((dpd['feeGrowthGlobal1X128'])/(2**128))/(10**decimal1)
 # 设置流动性价格区间参数
 mini = 3471  # 最小价格边界
 maxi = 4243  # 最大价格边界
-target = 10000  # 目标流动性价值
+target = 1000000000000  # 目标流动性价值
 base = 0  # 基准代币选择: 0=token0, 1=token1
 
 # 计算每期的手续费增长（修正版本）

@@ -9,6 +9,7 @@ except ModuleNotFoundError as exc:  # pragma: no cover - import side effect guar
         "缺少依赖 requests-toolbelt；请先运行 `pip install requests-toolbelt` 后重试。"
     ) from exc
 import pandas as pd
+from GetFeeGrowthGolbalFromBlock import fetch_pool_series_by_blockday, fetch_pool_data
 
 # 从不同网络的Uniswap V3 Graph获取池子数据（仅每小时）
 def graph(network, Adress, fromdate, todate: Optional[int] = None):
@@ -16,7 +17,7 @@ def graph(network, Adress, fromdate, todate: Optional[int] = None):
     if network == 1:  # Ethereum
         endpoint = "https://gateway.thegraph.com/api/subgraphs/id/5zvR82QoaXYFyDEKLZ9t6v9adgnptxYpKpSbxtgVENFV"
     elif network == 2:  # Arbitrum
-        endpoint = "https://gateway.thegraph.com/api/subgraphs/id/3hCPRGf4z88VC2SBvf9N8H8BzJhZv3v8UbHxEKpPJc4B"
+        endpoint = "https://gateway.thegraph.com/api/subgraphs/id/5zvR82QoaXYFyDEKLZ9t6v9adgnptxYpKpSbxtgVENFV"
     elif network == 3:  # Optimism
         endpoint = "https://gateway.thegraph.com/api/subgraphs/id/Cghf4LfVqPiFw6fp6Y5X5Ubc8UpmUhSfJL82zwiBFLaj"
     else:
@@ -121,8 +122,6 @@ def graph(network, Adress, fromdate, todate: Optional[int] = None):
         liquidity
         high
         low
-        feeGrowthGlobal0X128
-        feeGrowthGlobal1X128
         pool{{
             totalValueLockedUSD
             totalValueLockedToken1
@@ -137,9 +136,59 @@ def graph(network, Adress, fromdate, todate: Optional[int] = None):
         }}
         }}
         '''
-        # <要求>这边反转换一下build_where_conditions，把where_conditions转换为人类可读的内容，并且获取对应的天数，接着
         print("GraphQL 查询条件:", human_readable_where(where_conditions))
+        #<要求2>使用where_conditions里的时间戳数据和池子数据，去使用GetFeeGrowthGolbalFromBlock.py里面的fetch_pool_series_by_blockday函数，找到对应的feeGrowthGlobal0X128和feeGrowthGlobal1X128
+        #<提示2>删除原本查询语句里面的feeGrowthGlobal0X128和feeGrowthGlobal1X128，并且我希望在返回结果里面，保持原本的状态（包括字段），但是值用新的替换，目的是为了小程度修改代码，使得代码维护性提高
+        #在这里下面做修改
+        nonlocal fee_growth_updater
+        query_str = query_str.replace('\n        feeGrowthGlobal0X128\n        feeGrowthGlobal1X128', '')
+        def fee_growth_updater(records, cache={}, state={'base_ts': None, 'base_block': None}):
+            if not records:
+                return
+            blocks_per_hour = 14400
+            for record in records:
+                try:
+                    timestamp = int(record.get('periodStartUnix'))
+                except (TypeError, ValueError):
+                    record['feeGrowthGlobal0X128'] = None
+                    record['feeGrowthGlobal1X128'] = None
+                    continue
 
+                if timestamp not in cache:
+                    if state['base_ts'] is None:
+                        series = fetch_pool_series_by_blockday(timestamp, timestamp, blockday=1, pool_id=Adress)
+                        last = series[-1] if series else None
+                        fg0 = last.get('feeGrowthGlobal0X128') if last else None
+                        fg1 = last.get('feeGrowthGlobal1X128') if last else None
+                        cache[timestamp] = (fg0, fg1)
+                        state['base_ts'] = timestamp
+                        state['base_block'] = last.get('blockNumber') if last else None
+                    else:
+                        base_ts = state['base_ts']
+                        base_block = state['base_block']
+                        if base_block is None:
+                            cache[timestamp] = (None, None)
+                        else:
+                            delta_seconds = timestamp - base_ts
+                            hours_diff = abs(delta_seconds) // 3600
+                            block_offset = int(hours_diff) * blocks_per_hour
+                            if delta_seconds < 0:
+                                approx_block = max(0, base_block - block_offset)
+                            else:
+                                approx_block = base_block + block_offset
+                            snapshot = fetch_pool_data(Adress, approx_block)
+                            if snapshot:
+                                fg0 = snapshot.get('feeGrowthGlobal0X128')
+                                fg1 = snapshot.get('feeGrowthGlobal1X128')
+                                cache[timestamp] = (fg0, fg1)
+                                state['base_ts'] = timestamp
+                                state['base_block'] = approx_block
+                            else:
+                                cache[timestamp] = (None, None)
+
+                fg0, fg1 = cache.get(timestamp, (None, None))
+                record['feeGrowthGlobal0X128'] = fg0
+                record['feeGrowthGlobal1X128'] = fg1
         return gql(query_str)
     
     # 分页获取所有数据
@@ -147,6 +196,7 @@ def graph(network, Adress, fromdate, todate: Optional[int] = None):
     last_ts = None
     last_id = None
     page_count = 0
+    fee_growth_updater = lambda records: None
     
     while True:
         where_conditions = build_where_conditions(fromdate, todate, last_ts, last_id)
@@ -169,6 +219,8 @@ def graph(network, Adress, fromdate, todate: Optional[int] = None):
                 print("没有更多数据，结束分页")
                 break
                 
+            fee_growth_updater(batch_data)
+
             all_data.extend(batch_data)
             page_count += 1
             last_ts = batch_data[-1]['periodStartUnix']
